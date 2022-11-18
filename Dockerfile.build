@@ -1,0 +1,17 @@
+FROM golang:1.19.2-bullseye
+
+WORKDIR /app
+
+COPY . .
+
+RUN go mod download
+
+RUN go build -o /server-speedtest-webtransport-go
+
+WORKDIR /app/client
+
+RUN go mod download
+
+RUN go build -o /client-speedtest-webtransport-go
+
+CMD [ "/server-speedtest-webtransport-go" ]

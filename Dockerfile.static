@@ -1,0 +1,7 @@
+FROM scratch
+
+ADD server-speedtest-webtransport-go .
+
+ADD client-speedtest-webtransport-go .
+
+CMD [ "/server-speedtest-webtransport-go" ]
