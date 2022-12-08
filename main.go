@@ -15,7 +15,7 @@ import (
 	"github.com/marten-seemann/webtransport-go"
 )
 
-const TEST_DURATION = 10*time.Second
+const TEST_DURATION = 10 * time.Second
 
 // DownloadURLPath selects the download subtest.
 const DownloadURLPath = "/ndt/vquic/download"
@@ -39,7 +39,7 @@ func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 		// TODO
 		encoder := json.NewEncoder(str)
 		encoder.Encode(s.stats)
-		
+
 		stdoutEncoder := json.NewEncoder(os.Stdout)
 		stdoutEncoder.Encode(s.stats)
 
@@ -48,7 +48,7 @@ func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 }
 
 func main() {
-	htmlDir := "." 
+	htmlDir := "."
 
 	www := flag.String("www", ".", "HTTP root directory")
 	certFile := flag.String("cert", "cert.pem", "path to the certificate")
@@ -60,18 +60,17 @@ func main() {
 	ndt7Mux.Handle(*www, http.FileServer(http.Dir(htmlDir)))
 	// create a new webtransport.Server, listening on (UDP) port 443
 	server := NDTServer{
-		stats: ndt.Stats {
+		stats: ndt.Stats{
 			BytesReceived: 0,
-			StartTime: time.Now(),
-			ElapsedTime: 0,
+			StartTime:     time.Now(),
+			ElapsedTime:   0,
 		},
 	}
 
-
 	h3Server := http3.Server{
-		Addr: *addr,
+		Addr:      *addr,
 		TLSConfig: &tls.Config{InsecureSkipVerify: true},
-		Handler: ndt7Mux,
+		Handler:   ndt7Mux,
 	}
 	handler := ndt.NDT7Handler{
 		Server: &webtransport.Server{
@@ -82,12 +81,11 @@ func main() {
 			server.stats.BytesReceived += n
 		},
 		TransferEndCallback: server.endTransferAndSendStats,
-		TestDuration: TEST_DURATION,
+		TestDuration:        TEST_DURATION,
 	}
-	
+
 	ndt7Mux.HandleFunc(DownloadURLPath, handler.UpgradeAndSend)
 	ndt7Mux.HandleFunc(UploadURLPath, handler.UpgradeAndReceive)
-
 
 	handler.Server.ListenAndServeTLS(*certFile, *keyFile)
 }

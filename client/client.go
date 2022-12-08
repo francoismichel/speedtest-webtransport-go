@@ -14,7 +14,7 @@ import (
 	"github.com/marten-seemann/webtransport-go"
 )
 
-const TEST_DURATION = 10*time.Second
+const TEST_DURATION = 10 * time.Second
 
 // DownloadURLPath selects the download subtest.
 const DownloadURLPath = "/ndt/vquic/download"
@@ -38,7 +38,7 @@ func (s *NDTClient) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 		// TODO
 		encoder := json.NewEncoder(str)
 		encoder.Encode(s.stats)
-		
+
 		stdoutEncoder := json.NewEncoder(os.Stdout)
 		stdoutEncoder.Encode(s.stats)
 
@@ -52,7 +52,7 @@ func main() {
 	var buf [102400]byte
 	var d webtransport.Dialer
 	d.RoundTripper = &http3.RoundTripper{}
-	
+
 	d.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	log.Println("Query towards", "https://"+*addr+DownloadURLPath)
@@ -61,7 +61,7 @@ func main() {
 		log.Println("Could not initiate webtransport connection for download", err)
 		return
 	}
-	
+
 	client := NDTClient{}
 	// err is only nil if rsp.StatusCode is a 2xx
 	// Handle the connection. Here goes the application logic.

@@ -19,12 +19,11 @@ const (
 	TransferReceive
 )
 
-
 type NDT7Handler struct {
-	Server *webtransport.Server 
-	ReceiveCallback func(uint64)
+	Server              *webtransport.Server
+	ReceiveCallback     func(uint64)
 	TransferEndCallback func(TransferKind, *webtransport.Session)
-	TestDuration time.Duration
+	TestDuration        time.Duration
 }
 
 func (h *NDT7Handler) UpgradeAndSend(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +96,7 @@ func Receive(session *webtransport.Session, receiveCallback func(uint64), buf []
 	}
 	for {
 		select {
-		case <- ctx.Done():
+		case <-ctx.Done():
 			log.Println("Receiving done.")
 			return
 		default:
