@@ -92,7 +92,8 @@ func main() {
 	}
 	handler := ndt.NDT7Handler{
 		Server: &webtransport.Server{
-			H3: h3Server,
+			H3:          h3Server,
+			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 		ReceiveCallback: func(n uint64) {
 			if server.stats.StartTime == time.UnixMilli(0) {
