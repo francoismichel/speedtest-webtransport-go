@@ -39,6 +39,7 @@ func (h *NDT7Handler) UpgradeAndSend(w http.ResponseWriter, r *http.Request) {
 		log.Println("Could not create WebTransport session for sending.")
 		return
 	}
+	Send(session, buf[:], h.TestDuration)
 	h.TransferEndCallback(TransferSend, session)
 	defer session.Close()
 }
