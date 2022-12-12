@@ -49,6 +49,8 @@ func (s *NDTClient) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 func main() {
 	addr := flag.String("addr", "127.0.0.1:4443", "address:port to listen on")
 
+	flag.Parse()
+
 	var buf [102400]byte
 	var d webtransport.Dialer
 	d.RoundTripper = &http3.RoundTripper{}

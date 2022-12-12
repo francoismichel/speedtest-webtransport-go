@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"ndt-quic-go/ndt"
 
 	"github.com/lucas-clemente/quic-go/http3"
+	"github.com/lucas-clemente/quic-go/interop/utils"
 	"github.com/marten-seemann/webtransport-go"
 )
 
@@ -50,10 +52,21 @@ func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 func main() {
 	htmlDir := "."
 
-	www := flag.String("www", ".", "HTTP root directory")
+	www := flag.String("www", "www", "HTTP root directory")
 	certFile := flag.String("cert", "cert.pem", "path to the certificate")
 	keyFile := flag.String("key", "key.pem", "path to the private key")
+	hostname := flag.String("hostname", "localhost", "server hostname")
 	addr := flag.String("addr", ":4443", "address:port to listen on")
+	flag.Parse()
+
+	keyLog, err := utils.GetSSLKeyLog()
+	if err != nil {
+		fmt.Printf("Could not create key log: %s\n", err.Error())
+		os.Exit(1)
+	}
+	if keyLog != nil {
+		defer keyLog.Close()
+	}
 
 	// The ndt7 listener serving up NDT7 tests, likely on standard ports.
 	ndt7Mux := http.NewServeMux()
@@ -66,11 +79,16 @@ func main() {
 			ElapsedTime:   0,
 		},
 	}
-
+	certs := make([]tls.Certificate, 1)
+	certs[0], _ = tls.LoadX509KeyPair(*certFile, *keyFile)
 	h3Server := http3.Server{
-		Addr:      *addr,
-		TLSConfig: &tls.Config{InsecureSkipVerify: true},
-		Handler:   ndt7Mux,
+		Addr: *addr,
+		TLSConfig: &tls.Config{
+			Certificates: certs,
+			ServerName:   *hostname,
+			KeyLogWriter: keyLog,
+		},
+		Handler: ndt7Mux,
 	}
 	handler := ndt.NDT7Handler{
 		Server: &webtransport.Server{
@@ -87,5 +105,5 @@ func main() {
 	ndt7Mux.HandleFunc(DownloadURLPath, handler.UpgradeAndSend)
 	ndt7Mux.HandleFunc(UploadURLPath, handler.UpgradeAndReceive)
 
-	handler.Server.ListenAndServeTLS(*certFile, *keyFile)
+	handler.Server.ListenAndServe()
 }
