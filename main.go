@@ -30,7 +30,7 @@ type NDTServer struct {
 }
 
 func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtransport.Session) {
-	s.stats.ElapsedTime = time.Now().Sub(s.stats.StartTime)
+	s.stats.ElapsedTime = time.Duration(time.Now().Sub(s.stats.StartTime).Microseconds())
 	if kind == ndt.TransferReceive {
 		str, err := sess.OpenUniStream()
 		if err != nil {
@@ -44,8 +44,8 @@ func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 
 		stdoutEncoder := json.NewEncoder(os.Stdout)
 		stdoutEncoder.Encode(s.stats)
-
-		str.Write([]byte(""))
+		s.stats.BytesReceived = 0
+		s.stats.StartTime = time.UnixMilli(0)
 	}
 }
 
@@ -75,7 +75,7 @@ func main() {
 	server := NDTServer{
 		stats: ndt.Stats{
 			BytesReceived: 0,
-			StartTime:     time.Now(),
+			StartTime:     time.UnixMilli(0),
 			ElapsedTime:   0,
 		},
 	}
@@ -95,8 +95,11 @@ func main() {
 			H3: h3Server,
 		},
 		ReceiveCallback: func(n uint64) {
-			log.Println("received", n, "bytes")
+			if server.stats.StartTime == time.UnixMilli(0) {
+				server.stats.StartTime = time.Now()
+			}
 			server.stats.BytesReceived += n
+			//TODO(mp): Send that to the client somehow
 		},
 		TransferEndCallback: server.endTransferAndSendStats,
 		TestDuration:        TEST_DURATION,

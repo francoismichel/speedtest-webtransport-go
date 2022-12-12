@@ -53,6 +53,7 @@ func (h *NDT7Handler) UpgradeAndReceive(w http.ResponseWriter, r *http.Request) 
 	defer session.Close()
 	Receive(session, h.ReceiveCallback, buf[:], h.TestDuration)
 	h.TransferEndCallback(TransferReceive, session)
+	time.Sleep(2 * time.Second)
 }
 
 func Send(session *webtransport.Session, buf []byte, testDuration time.Duration) {
@@ -84,12 +85,15 @@ func Send(session *webtransport.Session, buf []byte, testDuration time.Duration)
 func Receive(session *webtransport.Session, receiveCallback func(uint64), buf []byte, testDuration time.Duration) {
 	deadline := time.Now().Add(testDuration)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
-	defer cancel()
 	str, err := session.AcceptUniStream(ctx)
 	if err != nil {
 		log.Println("Could not get stream from the peer.")
 		return
 	}
+	cancel()
+	deadline = time.Now().Add(testDuration)
+	ctx, cancel = context.WithDeadline(context.Background(), deadline)
+	defer cancel()
 	err = str.SetReadDeadline(deadline)
 	if err != nil {
 		log.Println("Could not set the read deadline on the stream for receiving.")
