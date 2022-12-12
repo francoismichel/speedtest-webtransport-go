@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<head>
+    <title>Speed test with WebTransport</title>
+</head>
+<body>
+<p>Download: <span id="download-throughput"></span> -- <span id="download-duration"></span></p>
+<p>Upload: <span id="upload-throughput"></span> -- <span id="upload-duration"></span></p>
+<p>Server upload measurement: <span id="server-upload-throughput"></span></p>
+<script>
+    const testTarget = new URLSearchParams(window.location.search).get('target') || "https://" + window.location.host;
+    const downloadPath = "/ndt/vquic/download";
+    const uploadPath = "/ndt/vquic/upload";
+
+    function downloadTest(url, onend) {
+        const wt = new WebTransport(url);
+
+        wt.closed.then(() => {
+            console.log(`The HTTP/3 connection to ${url} closed gracefully.`);
+        }).catch((error) => {
+            console.log(`The HTTP/3 connection to ${url} closed due to ${error}.`);
+        });
+
+        const receiveUniStreamReader = wt.incomingUnidirectionalStreams.getReader();
+        receiveUniStreamReader.read().then((receiveStreamResult => {
+            const streamReader = receiveStreamResult.value.getReader();
+
+            let start = performance.now();
+            let previous = start;
+            let total = 0;
+
+            function endTest() {
+                const t = performance.now();
+                document.getElementById("download-throughput").innerHTML = `${((total / (t - start)) * 0.008).toFixed(2)} Mbps`;
+                document.getElementById("download-duration").innerHTML = `${((t - start) / 1000).toFixed(2)} sec`;
+                onend();
+            }
+ 
+            function readChunk() {
+                streamReader.read().then((readResult => {
+                    if (readResult.value !== undefined) {
+                        total += readResult.value.length;
+                    }
+                    // Perform a client-side measurement 4 times per second.
+                    const t = performance.now();
+                    const every = 250; // ms
+                    if (t - previous > every || readResult.done) {
+                        document.getElementById("download-throughput").innerHTML = `${((total / (t - start)) * 0.008).toFixed(2)} Mbps`;
+                        document.getElementById("download-duration").innerHTML = `${((t - start) / 1000).toFixed(2)} sec`;
+                        console.log({
+                        MsgType: 'measurement',
+                            ClientData: {
+                                ElapsedTime: (t - start) / 1000, // seconds
+                                NumBytes: total,
+                                MeanClientMbps: (total / (t - start)) * 0.008,
+                            },
+                            Source: 'client',
+                        });
+                        previous = t;
+                    }
+                    if (!readResult.done) { 
+                        readChunk();
+                    } else {
+                        endTest();
+                    }
+                })).catch(endTest);
+            };
+
+            streamReader.closed.then(() => {}).catch(() => {});
+            readChunk();
+        }));
+    }
+
+    function uploadTest(url, onend) {
+        const maxMessageSize = 8388608; /* = (1<<23) = 8MB */
+        const clientMeasurementInterval = 250; // ms
+    
+        const wt = new WebTransport(url);
+
+        wt.closed.then(() => {
+            console.log(`The HTTP/3 connection to ${url} closed gracefully.`);
+        }).catch((error) => {
+            console.log(`The HTTP/3 connection to ${url} closed due to ${error}.`);
+        });
+
+        const receiveUniStreamReader = wt.incomingUnidirectionalStreams.getReader();
+        receiveUniStreamReader.read().then((receiveStreamResult => {
+            const streamReader = receiveStreamResult.value.getReader();
+            streamReader.read().then((readResult => {
+                const serverMeasurement = JSON.parse(new TextDecoder().decode(readResult.value));
+                console.log(serverMeasurement);
+                document.getElementById("server-upload-throughput").innerText = `${((serverMeasurement['BytesReceived'] / (serverMeasurement['ElapsedTime'])) * 8).toFixed(2)} Mbps`;
+            })).catch(() => {});
+            streamReader.closed.then(() => {});
+        }));
+
+        wt.ready.then(() => {
+            wt.createUnidirectionalStream().then((sendStream => {
+                const initialMessageSize = 8192; /* (1<<13) = 8kBytes */
+                const data = new Uint8Array(initialMessageSize);
+                const start = performance.now(); // ms since epoch
+                const duration = 10000; // ms
+                const end = start + duration; // ms since epoch
+                let total = 0;
+
+                function endTest() {
+                    const t = performance.now();
+                    document.getElementById("upload-throughput").innerText = `${((total / duration) * 0.008).toFixed(2)} Mbps`;
+                    document.getElementById("upload-duration").innerText = `${(duration / 1000).toFixed(2)} sec`;
+                    onend();
+                }
+
+                let closed = false;
+                const writer = sendStream.getWriter();
+                writer.closed.then(endTest).catch(endTest);
+
+                function doUpload(data, start, end, previous, bufferedAmount) {
+                    if (closed) {
+                        return;
+                    }
+                    const t = performance.now();
+                    if (t >= end) {
+                        if (!closed) {
+                            writer.close();
+                            closed = true;
+                        }
+                        endTest();
+                        return;
+                    }
+
+                    const nextSizeIncrement = (data.length >= maxMessageSize) ? Infinity : 16 * data.length;
+                    if ((total - bufferedAmount) >= nextSizeIncrement) {
+                        data = new Uint8Array(data.length * 2);
+                    }
+
+                    const desiredBuffer = data.length;
+                    if (bufferedAmount < desiredBuffer) {
+                        const start_write = performance.now()
+                        writer.ready.then(() => {
+                            writer.write(data).then(() => {
+                                total += data.length;
+                                const t2 = performance.now();
+                                if (t2 >= previous + clientMeasurementInterval) {
+                                    document.getElementById("upload-throughput").innerText = `${((total / (t - start)) * 0.008).toFixed(2)} Mbps`;
+                                    document.getElementById("upload-duration").innerText = `${((t - start) / 1000).toFixed(2)} sec`;
+                                    previous = t2;
+                                }
+                                setTimeout(() => doUpload(data, start, end, previous, 0 /*TODO(mp): bufferedAmount?*/), 0);
+                            }).catch(() => {});
+                        }).catch(() => {});
+                    } else if (t >= previous + clientMeasurementInterval) {
+                        document.getElementById("upload-throughput").innerText = `${((total / (t - start)) * 0.008).toFixed(2)} Mbps`;
+                        document.getElementById("upload-duration").innerText = `${((t - start) / 1000).toFixed(2)} sec`;
+                        previous = t;
+                        setTimeout(() => doUpload(data, start, end, previous, 0 /*TODO(mp): bufferedAmount?*/), 0);
+                    }
+                }
+
+                doUpload(data, start, end, start, 0 /*TODO(mp): bufferedAmount?*/);
+            })).catch((error) => {
+                console.log(`Couldn't create a unidirectional stream for the upload test du to ${error}.`);
+            });
+        });
+    }
+
+    downloadTest(testTarget + downloadPath, () => uploadTest(testTarget + uploadPath, () => console.log("Test ended")));
+</script>
+</body>
+</html>
