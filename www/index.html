@@ -16,6 +16,7 @@
 
         wt.closed.then(() => {
             console.log(`The HTTP/3 connection to ${url} closed gracefully.`);
+            onend();
         }).catch((error) => {
             console.log(`The HTTP/3 connection to ${url} closed due to ${error}.`);
         });
@@ -32,7 +33,19 @@
                 const t = performance.now();
                 document.getElementById("download-throughput").innerHTML = `${((total / (t - start)) * 0.008).toFixed(2)} Mbps`;
                 document.getElementById("download-duration").innerHTML = `${((t - start) / 1000).toFixed(2)} sec`;
-                onend();
+
+                wt.createUnidirectionalStream().then((sendStream => {
+                    const writer = sendStream.getWriter();
+                    writer.write(new TextEncoder().encode(JSON.stringify({
+                        TransferKind: 0,
+                        BytesReceived: total,
+                        StartTime: new Date(new Date().getTime() - (t - start)).toISOString(),
+                        ElapsedTime: ~~((t - start) * 1000),
+                    }))).then(() => {
+                        writer.close();
+                        writer.closed.then(() => wt.close());
+                    });
+                }));
             }
  
             function readChunk() {
@@ -62,10 +75,8 @@
                     } else {
                         endTest();
                     }
-                })).catch(endTest);
+                }))
             };
-
-            streamReader.closed.then(() => {}).catch(() => {});
             readChunk();
         }));
     }
@@ -78,6 +89,7 @@
 
         wt.closed.then(() => {
             console.log(`The HTTP/3 connection to ${url} closed gracefully.`);
+            onend();
         }).catch((error) => {
             console.log(`The HTTP/3 connection to ${url} closed due to ${error}.`);
         });
@@ -89,8 +101,8 @@
                 const serverMeasurement = JSON.parse(new TextDecoder().decode(readResult.value));
                 console.log(serverMeasurement);
                 document.getElementById("server-upload-throughput").innerText = `${((serverMeasurement['BytesReceived'] / (serverMeasurement['ElapsedTime'])) * 8).toFixed(2)} Mbps`;
-            })).catch(() => {});
-            streamReader.closed.then(() => {});
+                wt.close();
+            }))
         }));
 
         wt.ready.then(() => {
@@ -102,16 +114,8 @@
                 const end = start + duration; // ms since epoch
                 let total = 0;
 
-                function endTest() {
-                    const t = performance.now();
-                    document.getElementById("upload-throughput").innerText = `${((total / duration) * 0.008).toFixed(2)} Mbps`;
-                    document.getElementById("upload-duration").innerText = `${(duration / 1000).toFixed(2)} sec`;
-                    onend();
-                }
-
                 let closed = false;
                 const writer = sendStream.getWriter();
-                writer.closed.then(endTest).catch(endTest);
 
                 function doUpload(data, start, end, previous, bufferedAmount) {
                     if (closed) {
@@ -123,7 +127,8 @@
                             writer.close();
                             closed = true;
                         }
-                        endTest();
+                        document.getElementById("upload-throughput").innerText = `${((total / duration) * 0.008).toFixed(2)} Mbps`;
+                        document.getElementById("upload-duration").innerText = `${(duration / 1000).toFixed(2)} sec`;
                         return;
                     }
 
@@ -145,8 +150,8 @@
                                     previous = t2;
                                 }
                                 setTimeout(() => doUpload(data, start, end, previous, 0 /*TODO(mp): bufferedAmount?*/), 0);
-                            }).catch(() => {});
-                        }).catch(() => {});
+                            });
+                        });
                     } else if (t >= previous + clientMeasurementInterval) {
                         document.getElementById("upload-throughput").innerText = `${((total / (t - start)) * 0.008).toFixed(2)} Mbps`;
                         document.getElementById("upload-duration").innerText = `${((t - start) / 1000).toFixed(2)} sec`;
@@ -156,9 +161,7 @@
                 }
 
                 doUpload(data, start, end, start, 0 /*TODO(mp): bufferedAmount?*/);
-            })).catch((error) => {
-                console.log(`Couldn't create a unidirectional stream for the upload test du to ${error}.`);
-            });
+            }));
         });
     }
 

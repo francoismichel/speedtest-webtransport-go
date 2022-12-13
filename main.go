@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
@@ -30,23 +31,44 @@ type NDTServer struct {
 }
 
 func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtransport.Session) {
-	s.stats.ElapsedTime = time.Duration(time.Now().Sub(s.stats.StartTime).Microseconds())
+	s.stats.TransferKind = kind
+	defer func() { s.stats = ndt.Stats{} }()
 	if kind == ndt.TransferReceive {
+		s.stats.ElapsedTime = time.Duration(time.Since(s.stats.StartTime).Microseconds())
 		str, err := sess.OpenUniStream()
 		if err != nil {
 			log.Println("Could not open stream for sending statistics")
 			return
 		}
-		defer str.Close()
-		// TODO
 		encoder := json.NewEncoder(str)
 		encoder.Encode(s.stats)
-
-		stdoutEncoder := json.NewEncoder(os.Stdout)
-		stdoutEncoder.Encode(s.stats)
-		s.stats.BytesReceived = 0
-		s.stats.StartTime = time.UnixMilli(0)
+		str.Close()
+	} else if kind == ndt.TransferSend {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		str, err := sess.AcceptUniStream(ctx)
+		if err != nil {
+			log.Println("Could not accept uni stream for client stats", err)
+			return
+		}
+		str.SetReadDeadline(time.Now().Add(5 * time.Second))
+		buf := make([]byte, 10000)
+		n, err := str.Read(buf)
+		if err != nil {
+			log.Println("Could not read client stats", err)
+			return
+		}
+		err = json.Unmarshal(buf[:n], &s.stats)
+		if err != nil {
+			log.Println("Could not decode client stats", err)
+		}
 	}
+	stdoutEncoder := json.NewEncoder(os.Stdout)
+	stdoutEncoder.Encode(s.stats)
+	// TODO(mp): Bugfix, waits for the client to close the session
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	sess.AcceptUniStream(ctx)
 }
 
 func main() {
@@ -75,7 +97,7 @@ func main() {
 	server := NDTServer{
 		stats: ndt.Stats{
 			BytesReceived: 0,
-			StartTime:     time.UnixMilli(0),
+			StartTime:     time.Time{},
 			ElapsedTime:   0,
 		},
 	}
@@ -96,7 +118,7 @@ func main() {
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 		ReceiveCallback: func(n uint64) {
-			if server.stats.StartTime == time.UnixMilli(0) {
+			if server.stats.StartTime.IsZero() {
 				server.stats.StartTime = time.Now()
 			}
 			server.stats.BytesReceived += n
