@@ -72,8 +72,6 @@ func (s *NDTServer) endTransferAndSendStats(kind ndt.TransferKind, sess *webtran
 }
 
 func main() {
-	htmlDir := "."
-
 	www := flag.String("www", "www", "HTTP root directory")
 	certFile := flag.String("cert", "cert.pem", "path to the certificate")
 	keyFile := flag.String("key", "key.pem", "path to the private key")
@@ -92,7 +90,7 @@ func main() {
 
 	// The ndt7 listener serving up NDT7 tests, likely on standard ports.
 	ndt7Mux := http.NewServeMux()
-	ndt7Mux.Handle(*www, http.FileServer(http.Dir(htmlDir)))
+	ndt7Mux.Handle("/", http.FileServer(http.Dir(*www)))
 	// create a new webtransport.Server, listening on (UDP) port 443
 	server := NDTServer{
 		stats: ndt.Stats{
