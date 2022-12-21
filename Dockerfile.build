@@ -14,4 +14,4 @@ RUN go mod download
 
 RUN go build -o /client-speedtest-webtransport-go
 
-CMD [ "/server-speedtest-webtransport-go" ]
+ENTRYPOINT [ "/server-speedtest-webtransport-go" ]
